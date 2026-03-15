@@ -30,9 +30,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/pylemura"
-Repository = "https://github.com/yourusername/pylemura"
-Issues = "https://github.com/yourusername/pylemura/issues"
+Homepage = "https://lemura.makix.fr"
+Repository = "https://github.com/rzafiamy/pylemura"
+Issues = "https://github.com/rzafiamy/pylemura/issues"
+Documentation = "https://lemura.makix.fr"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pylemura"]
