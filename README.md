@@ -9,6 +9,10 @@
 
 ---
 
+**🚀 v1.0.0 is now stable! Read the [Release Notes](./RELEASE_NOTES.md).**
+
+---
+
 `pylemura` is a robust, provider-agnostic Python package designed to encapsulate a full agentic AI runtime. It simplifies the complex orchestration of LLMs, tools, and context management into a single, cohesive interface. It is the official Python portage of [lemura](https://github.com/rzafiamy/lemura).
 
 ### ✨ Key Features
