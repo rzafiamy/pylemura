@@ -1,7 +1,7 @@
 """pylemura — Provider-agnostic agentic AI runtime for Python.
 Python portage of lemura (https://github.com/rzafiamy/lemura).
 """
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # Core
 from pylemura.agent.session_manager import SessionManager

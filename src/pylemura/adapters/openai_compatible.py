@@ -48,7 +48,7 @@ class OpenAICompatibleAdapterConfig:
 
 class OpenAICompatibleAdapter(IProviderAdapter):
     NAME = "openai_compatible"
-    VERSION = "1.0.0"
+    VERSION = "1.1.0"
 
     def __init__(self, config: Optional[OpenAICompatibleAdapterConfig] = None) -> None:
         self._cfg = config or OpenAICompatibleAdapterConfig()

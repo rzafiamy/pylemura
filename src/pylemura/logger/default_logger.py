@@ -33,6 +33,8 @@ class DefaultLogger(ILogger):
             return
         color, tag = _LEVEL_STYLES[level]
         ts = datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
+        problem_prefix = ">" if not self._colorize else "  \033[33m>"
+        hint_prefix = "•" if not self._colorize else "  \033[90m•"
         if self._colorize:
             line = f"{color}{_BOLD}[{tag}]{_RESET} {color}{ts}{_RESET}  {message}"
         else:
@@ -45,10 +47,10 @@ class DefaultLogger(ILogger):
             if rest:
                 line += f"  {json.dumps(rest, default=str)}"
             if problem:
-                line += f"\n  {'>' if not self._colorize else chr(10) + '  \033[33m>'}  Problem: {problem}"
+                line += f"\n  {problem_prefix}  Problem: {problem}"
             if hints:
                 for h in hints:
-                    line += f"\n  {'•' if not self._colorize else '  \033[90m•'}  {h}"
+                    line += f"\n  {hint_prefix}  {h}"
             if self._colorize:
                 line += _RESET
 

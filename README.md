@@ -9,7 +9,7 @@
 
 ---
 
-**🚀 v1.0.0 is now stable! Read the [Release Notes](./RELEASE_NOTES.md).**
+**🚀 v1.1.0 is available. Read the [Release Notes](./RELEASE_NOTES.md).**
 
 ---
 

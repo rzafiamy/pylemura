@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pylemura"
-version = "1.0.0"
+version = "1.1.0"
 description = "Provider-agnostic agentic AI runtime for Python — Python portage of lemura"
 readme = "README.md"
 license = { text = "MIT" }

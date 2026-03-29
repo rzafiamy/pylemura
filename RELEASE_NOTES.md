@@ -1,60 +1,44 @@
-# Release Notes - v1.0.0
+# Release Notes - v1.1.0
 
-## 🚀 Welcome to pylemura v1.0.0!
+## Python 3.11 Docker Compatibility Update
 
-We are thrilled to announce the first stable release of `pylemura`, the official Python portage of the [lemura](https://github.com/rzafiamy/lemura) agentic runtime. `pylemura` brings a premium, robust, and provider-agnostic framework for building sophisticated AI agents in Python.
-
----
-
-### 🌟 Key Features
-
-- **🧠 Complete ReAct Orchestration**: A robust Reasoning + Acting loop that manages tool calls, context, and goal maintenance out of the box.
-- **🧩 Dynamic Skill Market**: A powerful system to load and unload agent skills (tools + prompts) based on tags, names, or dependencies.
-- **🔌 Provider Agnostic**: Native support for OpenAI-compatible endpoints, allowing you to switch between OpenAI, Groq, Together, Ollama, and more with zero code changes.
-- **🛡️ Integrated Tool Firewall**: A security-first approach with built-in ask/accept/deny policies for sensitive tool executions.
-- **⚡ Parallel Tool Execution**: Significantly reduce latency by executing independent tool calls concurrently.
-- **🧹 Advanced Context Management**: Intelligent strategies for context compression, including "Summary Injection" to maintain long-term coherence.
-- **🔌 Model Context Protocol (MCP)**: First-class support for MCP, enabling easy integration with a vast ecosystem of external tools.
-- **📦 Zero-Dependency Core**: The entire runtime is built using the Python standard library, ensuring maximum compatibility and minimal overhead.
+`pylemura` v1.1.0 is a focused stability release that fixes a Python 3.11 import-time crash affecting Docker deployments. Environments were correctly passing `LEMURA_API_KEY`, `LEMURA_BASE_URL`, and `LEMURA_MODEL`, but the package could still fail before startup completed because of a logger formatting bug.
 
 ---
 
-### 📦 What's New
+### What Changed
 
-#### Core Runtime
-- Implementation of the `ReAct` loop with continuation planning.
-- `SessionManager` for high-level interaction.
-- `ContextManager` with multiple injection and compression strategies.
-
-#### Tooling & Skills
-- `ToolRegistry` with strict JSON Schema validation.
-- support for `Skills` (YAML/Markdown definitions of tools and system instructions).
-- Parallel execution engine for tool calls.
-
-#### Memory & RAG
-- Short-term memory (STM) with chunked storage.
-- In-memory RAG adapter for document-based retrieval.
-
-#### Multimedia
-- `MediaBridge` for ASR (Speech-to-Text), TTS (Text-to-Speech), Vision, and Image Generation.
+- Fixed Python 3.11 compatibility in the default logger by removing f-string expressions that embedded backslash-based ANSI escape sequences.
+- Preserved the existing logger output format while making imports safe across supported Python versions.
+- Added a regression test to keep this startup path covered in CI.
 
 ---
 
-### 📝 Getting Started
+### Why This Release Matters
 
-Install the latest version via pip:
+- Dockerized applications using Python 3.11 can now import `pylemura` successfully.
+- Backend startup failures caused by the logger no longer surface as misleading downstream 503s.
+- The package behavior now matches the `requires-python = ">=3.11"` support claim in the project metadata.
+
+---
+
+### Upgrade
 
 ```bash
-pip install pylemura
+pip install --upgrade pylemura==1.1.0
 ```
 
-Check out the [Quick Start guide](https://github.com/rzafiamy/pylemura#quick-start) in the README or visit our [documentation](https://lemura.makix.fr).
+If you were previously pinning `1.0.0` in a Docker image, rebuild after upgrading so the fixed package is installed into the container.
 
 ---
 
-### 🤝 Transitions
-This release marks the transition from beta to stable. We have unified the API to match the TypeScript core while optimizing for Python's asynchronous patterns.
+### Verification
+
+This release was verified with:
+
+- `pytest -q`
+- `PYTHONPATH=src python3.11 -c "import pylemura; print(pylemura.__version__)"`
 
 ---
 
-*Thank you to all the contributors and early testers who helped make this possible!*
+*Thank you to everyone who reported and helped narrow down the Docker startup issue.*
