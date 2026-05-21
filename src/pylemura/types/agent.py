@@ -31,6 +31,7 @@ TraceEventType = Literal[
     "stream_chunk",
     "session_start",
     "session_end",
+    "verification",
 ]
 
 
@@ -58,7 +59,7 @@ class SessionConfig:
     # Execution control
     max_iterations: Optional[int] = None
     max_steps: int = 20
-    max_completion_tokens: int = 2000
+    max_completion_tokens: int = 4000
     parallel_tool_calls: bool = False
 
     # Tools & Skills

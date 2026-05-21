@@ -7,7 +7,7 @@ import json
 import uuid
 from typing import Any, AsyncIterator, Optional
 
-from pylemura.agent.execution.continuation_planner import ContinuationPlan, ContinuationPlanner
+from pylemura.agent.execution.continuation_planner import ContinuationPlan, ContinuationPlanner, ContinuationStep
 from pylemura.agent.execution.final_response_formatter import FinalResponseFormatter
 from pylemura.agent.execution.goal_injector import Goal, GoalInjector
 from pylemura.agent.execution.step_counter import StepCounter
@@ -67,6 +67,22 @@ class SessionManager:
 
         # Execution helpers
         self._step_counter = StepCounter(max_steps=config.max_steps)
+
+        # Warn when maxSteps/maxIterations are mismatched
+        default_max_its = 10
+        if config.max_steps != 20 and config.max_iterations is None:
+            if config.max_steps > default_max_its:
+                self._logger.warn(
+                    f"[Config] max_steps={config.max_steps} is set but max_iterations is not. "
+                    f"The default max_iterations={default_max_its} may stop the agent before max_steps is reached. "
+                    f"Consider setting max_iterations to at least ceil(max_steps / avg_tool_calls_per_turn)."
+                )
+        if config.max_iterations is not None and config.max_steps > config.max_iterations * 10:
+            self._logger.warn(
+                f"[Config] max_steps ({config.max_steps}) is much larger than max_iterations ({config.max_iterations}). "
+                f"The agent will be stopped by max_iterations before max_steps is ever reached."
+            )
+
         self._goal_injector: Optional[GoalInjector] = None
         self._continuation_planner: Optional[ContinuationPlanner] = None
         self._response_processor = (
@@ -127,7 +143,19 @@ class SessionManager:
         strategy: str = "sequential",
     ) -> None:
         plan = ContinuationPlan(steps=steps, strategy=strategy)
-        self._continuation_planner = ContinuationPlanner(plan)
+        self._continuation_planner = ContinuationPlanner(
+            plan,
+            on_step_failed=lambda step_id, reason: self._trace("plan_update", "step_failed", {"step_id": step_id, "reason": reason}),
+            on_step_skipped=lambda step_id, reason: self._trace("plan_update", "step_skipped", {"step_id": step_id, "reason": reason}),
+        )
+        self._context.metadata["continuationPlan"] = self._continuation_planner.get_plan()
+
+    def get_plan(self) -> Optional[ContinuationPlan]:
+        """Return a snapshot of the current continuation plan, or ``None`` if no plan has been set.
+
+        Use this after ``run()`` to inspect which steps completed, failed, or were skipped.
+        """
+        return self._continuation_planner.get_plan() if self._continuation_planner else None
 
     # ------------------------------------------------------------------
     # Main entry points
@@ -359,6 +387,16 @@ class SessionManager:
         self._trace("tool_call", tool_name, {"args": args_json[:200]})
         self._logger.debug(f"[Tool] Calling '{tool_name}'", {"args": args_json[:100]})
 
+        # Mark the matching continuation step as running
+        if self._continuation_planner:
+            pending_step = next(
+                (s for s in self._continuation_planner.get_plan().steps
+                 if s.tool_name == tool_name and s.status == "pending"),
+                None,
+            )
+            if pending_step:
+                self._continuation_planner.mark_step_running(pending_step.step_id)
+
         # Firewall check
         if self._cfg.tool_firewall:
             result = evaluate_tool_firewall(self._cfg.tool_firewall, tool_name, args_json, self._logger)
@@ -396,10 +434,73 @@ class SessionManager:
                 if len(result_str) > max_chars:
                     result_str = result_str[:max_chars] + f"\n[Truncated to {self._cfg.max_tokens_per_tool} tokens]"
 
+            # Step verifier — run semantic check if the running step has one
+            result_str = await self._run_step_verifier(tool_name, result_str, args)
+
+            # Mark the continuation step done (verifier already marks it failed/pending on non-pass)
+            if self._continuation_planner:
+                running_step = next(
+                    (s for s in self._continuation_planner.get_plan().steps
+                     if s.tool_name == tool_name and s.status == "running"),
+                    None,
+                )
+                if running_step:
+                    self._continuation_planner.mark_step_done(running_step.step_id, result_str)
+                    self._context.metadata["continuationPlan"] = self._continuation_planner.get_plan()
+
             return result_str
         except Exception as e:
             self._logger.error(f"[Tool] '{tool_name}' error: {e}")
             return f"Error: {e}"
+
+    async def _run_step_verifier(self, tool_name: str, result: str, args: Any) -> str:
+        """Run the semantic verifier for the currently running continuation step, if any."""
+        if not self._continuation_planner:
+            return result
+        running_step = next(
+            (s for s in self._continuation_planner.get_plan().steps
+             if s.tool_name == tool_name and s.status == "running"),
+            None,
+        )
+        if running_step is None or running_step.verify is None:
+            return result
+
+        max_retries = running_step.verify.max_retries
+        retry_count = self._continuation_planner.get_retry_count(running_step.step_id)
+        try:
+            verdict = running_step.verify.check(result, args if isinstance(args, dict) else {})
+            if asyncio.iscoroutine(verdict):
+                verdict = await verdict
+        except Exception as e:
+            verdict_status = "fail"
+            verdict_reason = f"Verifier threw: {e}"
+            verdict = type("_V", (), {"status": verdict_status, "reason": verdict_reason})()
+
+        if verdict.status == "fail" or (verdict.status == "retry" and retry_count >= max_retries):
+            self._continuation_planner.mark_step_failed(
+                running_step.step_id,
+                verdict.reason or "verifier returned fail",
+            )
+            self._context.metadata["continuationPlan"] = self._continuation_planner.get_plan()
+            self._trace("verification", "step_failed", {
+                "step_id": running_step.step_id,
+                "reason": verdict.reason,
+                "retry_count": retry_count,
+            })
+            return result
+
+        if verdict.status == "retry":
+            self._continuation_planner.mark_step_pending(running_step.step_id)
+            self._context.metadata["continuationPlan"] = self._continuation_planner.get_plan()
+            self._trace("verification", "step_retry", {
+                "step_id": running_step.step_id,
+                "reason": verdict.reason,
+                "retry_count": self._continuation_planner.get_retry_count(running_step.step_id),
+            })
+            return result
+
+        # verdict == "pass" — fall through, step will be marked done by normal flow
+        return result
 
     def _format_tool_result(self, item: dict[str, Any]) -> str:
         if "error" in item:

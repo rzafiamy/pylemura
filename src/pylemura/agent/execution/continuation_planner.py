@@ -2,7 +2,7 @@
 from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Awaitable, Callable, Literal, Optional, Union
 
 StepStatus = Literal["pending", "running", "done", "failed", "skipped"]
 PlanStrategy = Literal["sequential", "parallel", "conditional"]
@@ -23,6 +23,30 @@ class StepCondition:
 
 
 @dataclass
+class StepVerifierResult:
+    """Result returned by a StepVerifier.check function.
+
+    - ``pass``  — the sub-goal is achieved; the step is marked ``done``.
+    - ``fail``  — the sub-goal failed; the step is marked ``failed``.
+    - ``retry`` — the output is unsatisfactory but retriable; the step is reset to ``pending``.
+    """
+    status: Literal["pass", "fail", "retry"]
+    reason: Optional[str] = None
+
+
+@dataclass
+class StepVerifier:
+    """Optional semantic verifier attached to a ContinuationStep.
+
+    Called after the tool executes successfully to confirm the sub-goal is actually met.
+    """
+    check: Callable[[str, dict[str, Any]], Union[StepVerifierResult, Awaitable[StepVerifierResult]]]
+    """Inspects the tool output and decides whether the sub-goal is satisfied."""
+    max_retries: int = 0
+    """Maximum number of ``retry`` verdicts before the step is forced to ``failed``."""
+
+
+@dataclass
 class ContinuationStep:
     tool_name: str
     description: str
@@ -32,6 +56,7 @@ class ContinuationStep:
     output_key: Optional[str] = None
     input_mapping: dict[str, str] = field(default_factory=dict)
     condition: Optional[StepCondition] = None
+    verify: Optional[StepVerifier] = None
     _output: Optional[str] = field(default=None, repr=False)
 
 
@@ -43,8 +68,16 @@ class ContinuationPlan:
 
 
 class ContinuationPlanner:
-    def __init__(self, plan: ContinuationPlan) -> None:
+    def __init__(
+        self,
+        plan: ContinuationPlan,
+        on_step_failed: Optional[Callable[[str, str], None]] = None,
+        on_step_skipped: Optional[Callable[[str, str], None]] = None,
+    ) -> None:
         self._plan = plan
+        self._on_step_failed = on_step_failed
+        self._on_step_skipped = on_step_skipped
+        self._retry_count: dict[str, int] = {}
 
     def get_plan(self) -> ContinuationPlan:
         return self._plan
@@ -97,21 +130,38 @@ class ContinuationPlanner:
                 self._plan._outputs[step.output_key] = output
             # Propagate: nothing to do for done steps
 
-    def mark_step_failed(self, step_id: str) -> None:
+    def mark_step_failed(self, step_id: str, reason: str = "step failed") -> None:
         step = self._get_step(step_id)
         if step:
             step.status = "failed"
+            if self._on_step_failed:
+                self._on_step_failed(step_id, reason)
             self._propagate_skip(step_id)
 
-    def mark_step_skipped(self, step_id: str) -> None:
+    def mark_step_skipped(self, step_id: str, reason: str = "condition not met") -> None:
         step = self._get_step(step_id)
         if step:
             step.status = "skipped"
+            if self._on_step_skipped:
+                self._on_step_skipped(step_id, reason)
+
+    def mark_step_pending(self, step_id: str) -> None:
+        """Reset a step back to ``pending`` for a retry attempt and increment retry counter."""
+        step = self._get_step(step_id)
+        if step:
+            step.status = "pending"
+            self._retry_count[step_id] = self._retry_count.get(step_id, 0) + 1
+
+    def get_retry_count(self, step_id: str) -> int:
+        """Return how many times a step has been retried."""
+        return self._retry_count.get(step_id, 0)
 
     def _propagate_skip(self, failed_id: str) -> None:
         for step in self._plan.steps:
             if failed_id in step.depends_on and step.status == "pending":
                 step.status = "skipped"
+                if self._on_step_skipped:
+                    self._on_step_skipped(step.step_id, f"dependency '{failed_id}' failed or was skipped")
                 self._propagate_skip(step.step_id)
 
     def get_output(self, key: str) -> Optional[str]:
