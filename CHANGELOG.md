@@ -44,6 +44,9 @@ Ports lemura v1.4.4 features to pylemura.
 - `mark_step_running` and `mark_step_done` were never called during tool execution, so the
   continuation plan step statuses were never updated. Both calls are now correctly placed in
   `_run_single_tool`.
+- `TranscriptionRequest` now accepts an optional `model` field; `OpenAICompatibleAdapter`
+  uses it in `_transcribe_sync` instead of the hardcoded `"whisper-1"` string, allowing
+  callers to select any ASR model (e.g. `whisper-large-v3`).
 
 ## [1.1.0] - 2026-03-29
 
