@@ -89,6 +89,7 @@ class TranscriptionRequest:
     audio_data: bytes
     mime_type: str = "audio/wav"
     language: Optional[str] = None
+    model: Optional[str] = None
 
 
 @dataclass

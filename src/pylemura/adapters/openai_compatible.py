@@ -136,7 +136,8 @@ class OpenAICompatibleAdapter(IProviderAdapter):
     def _transcribe_sync(self, request: TranscriptionRequest) -> dict[str, Any]:
         boundary = "----PylemuraBoundary"
         body_parts: list[bytes] = []
-        body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n".encode())
+        model_name = request.model or self._cfg.default_model
+        body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{model_name}\r\n".encode())
         body_parts.append(
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: {request.mime_type}\r\n\r\n".encode()
             + request.audio_data
